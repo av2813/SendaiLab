@@ -55,6 +55,10 @@ class MOKEAnalyzer:
         self.background_fit = None
         self.coercive_field = None
         self.saturation_magnetization = None
+        self.properties = {}
+
+    def add_property(self, key, prop):
+        self.properties[key] = prop
 
     def read_data(self, extract_metadata: bool = True) -> None:
         """
