@@ -92,6 +92,37 @@ class VSMAnalyzer:
             'background': background
         }
 
+    def find_coercive_field(self):
+        """Extracts coercive fields from the processed data."""
+        field, magnetization =  self.data['Field'], self.data['Moment_background_sub']
+        
+        zero_crossings = np.where(np.diff(np.signbit(magnetization)))[0]
+        if len(zero_crossings) == 0:
+            raise ValueError("No zero crossings found in magnetization data.")
+        
+        if len(zero_crossings) == 0:
+            raise ValueError("No zero crossings found in magnetization data.")
+
+        x1 = np.where(field[zero_crossings] < 0)
+        x2 = np.where(field[zero_crossings] > 0)
+        
+        Hc1 = np.mean(field[zero_crossings[x1]])
+        Hc2 = np.mean(field[zero_crossings[x2]])
+        
+        Hc1_std = np.std(field[zero_crossings[x1]])
+        Hc2_std = np.std(field[zero_crossings[x2]])
+        
+        # Store coercive field summary
+        self.Hc_summary = {
+            'Hc1': Hc1,
+            'Hc2': Hc2,
+            'Hc1_std': Hc1_std,
+            'Hc2_std': Hc2_std,
+            'Hc_mean': (abs(Hc1) + abs(Hc2)) / 2,
+            'Hc_std': (Hc1_std + Hc2_std) / 2
+        }
+        self.coercive_field = self.Hc_summary['Hc_mean']
+
     def calculate_coercive_field(self):
         interp_func = interp1d(self.data['Moment_background_sub'], self.data['Field'])
         self.coercive_field = abs(interp_func(0))
@@ -100,6 +131,52 @@ class VSMAnalyzer:
         self.saturation_magnetization_raw = (self.background_fit['popt_pos'][1]-self.background_fit['popt_neg'][1])/2#max(abs(self.data['Moment_background_sub']))
         self.saturation_magnetization_volume = self.saturation_magnetization_raw / self.volume
         self.saturation_magnetization_mass = self.saturation_magnetization_raw / self.mass
+
+    def determine_saturation_field(self, threshold_percentage=0.99, plot=False):
+        """
+        Determines the saturation field of the material.
+        
+        Args:
+        threshold_percentage (float): The percentage of maximum magnetization to consider as saturation (default: 0.99)
+        plot (bool): Whether to plot the magnetization curve with saturation field marked (default: False)
+
+        Returns:
+        float: The determined saturation field
+        """
+        field, magnetization = self.data['Field'], self.data['Moment_background_sub']
+
+        field_pos_sweep = field[np.where(np.diff(field)>0)[0]]
+        field_neg_sweep = field[np.where(np.diff(field)<0)[0]]
+        mag_pos_sweep = magnetization[np.where(np.diff(field)>0)[0]]
+        mag_neg_sweep = magnetization[np.where(np.diff(field)<0)[0]]
+
+        if len(field_pos_sweep) == 0 or len(field_neg_sweep) == 0:
+            raise ValueError("Unable to separate positive and negative field sweeps")
+
+        max_mag = self.saturation_magnetization_raw
+        threshold_mag = max_mag * threshold_percentage
+
+        field1 = field_pos_sweep[mag_pos_sweep >= threshold_mag]
+        field2 = field_neg_sweep[mag_neg_sweep <= -threshold_mag]
+
+        if len(field1) == 0 or len(field2) == 0:
+            raise ValueError("Unable to determine saturation field: magnetization does not reach threshold")
+
+        saturation_field1 = field1.iloc[0]
+        saturation_field2 = field2.iloc[0]
+
+        self.saturation_field = (abs(saturation_field1) + abs(saturation_field2)) / 2
+
+        if plot:
+            plt.figure(figsize=(5, 3))
+            plt.plot(field, magnetization, label='Magnetization')
+            plt.axvline(saturation_field1, color='r', linestyle='--', label='Saturation Field (pos)')
+            plt.axvline(saturation_field2, color='g', linestyle='--', label='Saturation Field (neg)')
+            plt.xlabel('Field')
+            plt.ylabel('Magnetization')
+            plt.legend()
+            plt.title('Magnetization Curve with Saturation Field')
+            plt.show()
 
     def scale_data(self):
         """Scale the data by volume and mass, for both raw and background-subtracted data."""
