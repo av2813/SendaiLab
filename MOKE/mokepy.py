@@ -22,8 +22,6 @@ class MOKEAnalyzer:
     def read_data(self):
         """Reads MOKE data from a CSV file."""
         try:
-            #self.data = pd.read_csv(self.path, encoding='shift_jis')
-            #print(self.data)
             self.data = pd.read_csv(self.path, names=['H', 'theta', 'H_ad', 'M_ad', 'M_dc'], header=22, encoding='shift_jis')
             
             self.data['H'] = self.data['H']*1000
@@ -53,8 +51,6 @@ class MOKEAnalyzer:
         def linear(x, a, b):
             return a * x + b
         
-        # Only fit to positive field data above the threshold
-        #mask = self.data['H'] > field_threshold
         positive_mask = self.data['H'] > field_threshold
         negative_mask = self.data['H'] < -field_threshold
         # Perform the curve fit
@@ -67,7 +63,6 @@ class MOKEAnalyzer:
         background = self.data['H']*grad_ave
 
         # Store the background-subtracted data
-        #self.processed_data = self.data.copy()
         self.data['M'] = self.data['theta'] - background
 
         # Store the fit parameters and covariance
@@ -188,24 +183,6 @@ class MOKEAnalyzer:
         field_2, mag_cdf_2 = field[500:1000],sfd_normalized[500:1000]
         field_3, mag_cdf_3 = field[1000:1500],sfd_normalized[1000:1500]
         field_4, mag_cdf_4 = field[1500:-1],sfd_normalized[1500:]
-
-        #fig, ax = plt.subplots(figsize=(10, 6))
-
-        #ax.plot(field_1,mag_cdf_1,'.',label='1')
-        #ax.plot(field_2,mag_cdf_2,'.',label='2')
-        #ax.plot(field_3,mag_cdf_3,'.',label='3')
-        #ax.plot(field_4,mag_cdf_4,'.',label='4')
-        #ax.axvline(self.Hc_summary['Hc1'])
-        #ax.axvline(self.Hc_summary['Hc2'], color = 'r')
-        #plt.legend()
-
-        #ax.set_xlabel('Field (Oe)')
-        #ax.set_ylabel('Switching field distribution')
-        
-        # Use histogram to estimate switching field distribution
-        #hist, bin_edges = np.histogram(field[:-1][mag_diff > 0], bins=30)  # Only consider positive slopes
-        
-        #bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
         
         # Fit Gaussian to histogram data
         def gaussian(x, amp, mean, stddev, constant):
@@ -274,8 +251,6 @@ class MOKEAnalyzer:
             y_fit_neg = self.gaussian(x_fit, self.sfd_fit_params['popt_neg'][0], self.sfd_fit_params['popt_neg'][1],self.sfd_fit_params['popt_neg'][2],self.sfd_fit_params['popt_neg'][3])
             ax.plot(x_fit, y_fit_pos, color='red', label='Pos Gaussian Fit')
             ax.plot(x_fit, y_fit_neg, color='blue', label='Neg Gaussian Fit')
-
-        #    ax.set_title('Switching Field Distribution with Gaussian Fit')
 
 # Usage Example:
 # analyzer = MOKEAnalyzer('path_to_your_data.csv')

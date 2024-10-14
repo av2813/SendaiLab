@@ -7,13 +7,14 @@ from pptx.util import Inches
 import mokepy as mkpy  # Assuming MOKEAnalyzer is in a separate file
 import numpy as np
 from importlib import reload
-from scipy.stats import norm
+from scipy import stats
 
 import scienceplots
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 from typing import List, Dict, Optional
 import natsort
+from tqdm import tqdm
 
 plt.style.use(['science', 'ieee', 'no-latex'])
 
@@ -30,44 +31,53 @@ class BatchAnalyzer:
         """Process all .csv files in the specified folder."""
         filenames = os.listdir(self.folder_path)
         filenames_s = natsort.natsorted(filenames)
-        for filename in filenames_s:
+        for filename in tqdm(filenames_s, desc="Processing files"):
             if filename.endswith('.CSV') and 'coercive_fields_summary' not in filename:
-                print(filename)
-                file_path = os.path.join(self.folder_path, filename)
-                analyzer = mkpy.MOKEAnalyzer(file_path)
-                analyzer.read_data()
-                analyzer.fit_background(field_threshold=field_threshold)
-                analyzer.normalize_data()
-                analyzer.find_coercive_field()
-                analyzer.fit_switching_field_distribution()
-                analyzer.calc_Mr(field_threshold=field_threshold)
-                analyzer.calc_squareness(field_threshold=field_threshold)
-                
-                self.analyzers[filename] = analyzer
-                sweep_rate = self.extract_sweep_rate(filename)
-                
-                # Collect summary data
-                self.summary_data.append({
-                    'Filename': filename,
-                    'Hc1': analyzer.Hc_summary['Hc1'],
-                    'Hc2': analyzer.Hc_summary['Hc2'],
-                    'Hc_mean': analyzer.Hc_summary['Hc_mean'],
-                    'sfd_amp1':analyzer.sfd_fit_params['popt_pos'][0],
-                    'sfd_amp2':analyzer.sfd_fit_params['popt_neg'][0],
-                    'sfd_mean1':analyzer.sfd_fit_params['popt_pos'][1],
-                    'sfd_mean2':analyzer.sfd_fit_params['popt_neg'][1],
-                    'sfd_std1':analyzer.sfd_fit_params['popt_pos'][2],
-                    'sfd_std2':analyzer.sfd_fit_params['popt_neg'][2],
-                    'sfd_std_mean':(abs(analyzer.sfd_fit_params['popt_neg'][2])+abs(analyzer.sfd_fit_params['popt_pos'][2]))/2,
-                    'sfd_const1':analyzer.sfd_fit_params['popt_pos'][3],
-                    'sfd_const2':analyzer.sfd_fit_params['popt_neg'][3],
-                    'Mr_mean':analyzer.Mr_summary['Mr_mean'],
-                    'Mr_std':analyzer.Mr_summary['Mr_std'],
-                    'MrMs':analyzer.Mr_summary['MrMs'],
-                    'Ms_mean':analyzer.Ms_summary['Ms_mean'],
-                    'Ms_std':analyzer.Ms_summary['Ms_std'],
-                    'sweep_rate':sweep_rate
-                })
+                #print(filename)
+                try:
+                    file_path = os.path.join(self.folder_path, filename)
+                    analyzer = mkpy.MOKEAnalyzer(file_path)
+                    analyzer.read_data()
+                    analyzer.fit_background(field_threshold=field_threshold)
+                    analyzer.normalize_data()
+                    analyzer.find_coercive_field()
+                    analyzer.fit_switching_field_distribution()
+                    analyzer.calc_Mr(field_threshold=field_threshold)
+                    analyzer.calc_squareness(field_threshold=field_threshold)
+                    
+                    self.analyzers[filename] = analyzer
+                    sweep_rate = self.extract_sweep_rate(filename)
+                    
+                    # Collect summary data
+                    self.summary_data.append({
+                        'Filename': filename,
+                        'Hc1': analyzer.Hc_summary['Hc1'],
+                        'Hc2': analyzer.Hc_summary['Hc2'],
+                        'Hc_mean': analyzer.Hc_summary['Hc_mean'],
+                        'sfd_amp1':analyzer.sfd_fit_params['popt_pos'][0],
+                        'sfd_amp2':analyzer.sfd_fit_params['popt_neg'][0],
+                        'sfd_mean1':analyzer.sfd_fit_params['popt_pos'][1],
+                        'sfd_mean2':analyzer.sfd_fit_params['popt_neg'][1],
+                        'sfd_std1':analyzer.sfd_fit_params['popt_pos'][2],
+                        'sfd_std2':analyzer.sfd_fit_params['popt_neg'][2],
+                        'sfd_std_mean':(abs(analyzer.sfd_fit_params['popt_neg'][2])+abs(analyzer.sfd_fit_params['popt_pos'][2]))/2,
+                        'sfd_const1':analyzer.sfd_fit_params['popt_pos'][3],
+                        'sfd_const2':analyzer.sfd_fit_params['popt_neg'][3],
+                        'Mr_mean':analyzer.Mr_summary['Mr_mean'],
+                        'Mr_std':analyzer.Mr_summary['Mr_std'],
+                        'MrMs':analyzer.Mr_summary['MrMs'],
+                        'Ms_mean':analyzer.Ms_summary['Ms_mean'],
+                        'Ms_std':analyzer.Ms_summary['Ms_std'],
+                        'sweep_rate':sweep_rate
+                    })
+                except Exception as e:
+                    print(f"Error processing {filename}: {e}")
+
+    def detect_outliers(self, parameter):
+        values = [data[parameter] for data in self.summary_data]
+        z_scores = stats.zscore(values)
+        outliers = [data for data, z in zip(self.summary_data, z_scores) if abs(z) > 3]
+        return outliers
 
     def extract_sweep_rate(self, filename):
         """Extract the field sweep rate from the filename."""
@@ -131,17 +141,6 @@ class BatchAnalyzer:
         
         return avg_hc, avg_sfd_width
 
-    def extract_parameter(self, filename, param_name):
-        """Extracts a specified parameter from the filename or data."""
-        # This is a placeholder implementation. You may need to adjust it based on your actual data structure.
-        # For demonstration purposes, let's assume we can extract parameters from the filename.
-        if param_name == 'Area':
-            return float(filename.split('-')[3])  # Example extraction logic (adjust as needed)
-        elif param_name == 'Thickness':
-            return float(filename.split('-')[4])  # Example extraction logic (adjust as needed)
-        else:
-            return None
-
     def plot_combined_hysteresis_loops(self):
         """Plot hysteresis loops from all files on a single graph."""
         plt.figure(figsize=(6, 4))
@@ -171,7 +170,7 @@ class BatchAnalyzer:
             color = cmap(norm_scale(i))
             field, magnetization = analyzer.data['H'], analyzer.data['M_norm']
             mag_diff = np.diff(magnetization)
-            mag_cdf = norm.cdf(mag_diff)
+            mag_cdf = stats.norm.cdf(mag_diff)
 
             sfd = np.abs(mag_diff)
             plt.plot(field[:-1], sfd, color=color,label=filename)
@@ -294,31 +293,6 @@ class BatchAnalyzer:
         p.text += f"Average Width of Switching Field Distribution: {avg_sfd_width:.2f} Oe"
 
         prs.save(os.path.join(self.folder_path, 'MOKE_Analysis_Summary.pptx'))
-    
-    
-
-    def plot_coercive_fields_vs_parameter(self, parameter=[]):
-        """Plots coercive fields against a specified parameter."""
-        Hc_mean_val = [data['Hc_mean'] for data in self.summary_data]
-        if len(parameter) != Hc_mean_val:
-            raise ValueError(f"Invalid parameter '{parameter}'.Not the same length as the coercive fields.")
-
-        x_values = [data[parameter] for data in self.summary_data]
-        
-
-        plt.figure(figsize=(5, 3))
-        plt.scatter(x_values, Hc_mean_val, label='Hc1', color='k', marker='o')
-
-        plt.xlabel()
-        plt.ylabel("Coercive Field (Oe)")
-        plt.title(f"Coercive Fields")
-        plt.legend()
-        plt.grid(True)
-
-        # Save plot to file
-        plt.savefig(os.path.join(self.folder_path, f'coercive_fields_vs_.png'))
-        plt.close()
-
 
 
     def run_batch_analysis(self):
