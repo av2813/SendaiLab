@@ -4,11 +4,17 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.stats import norm
 
+import scienceplots
+from typing import List, Dict, Optional
+
+plt.style.use(['science', 'ieee', 'no-latex'])
+
 
 class MOKEAnalyzer:
-    def __init__(self, path):
+    def __init__(self, path, name=''):
         self.path = path
         self.data = None
+        self.name = name
         self.Hc_summary = {}
         self.background_params = None  # Store background fit parameters
         self.gaussian_fit_params = None  # Store Gaussian fit parameters
@@ -22,9 +28,11 @@ class MOKEAnalyzer:
             
             self.data['H'] = self.data['H']*1000
             self.data['H_ad'] = self.data['H_ad']*1000
-            print(self.data)
+            #print(self.data)
         except Exception as e:
             raise ValueError(f"Error reading data from {self.path}: {e}")
+        
+    
 
     def fit_background(self, field_threshold: float) -> None:
         """
@@ -69,6 +77,64 @@ class MOKEAnalyzer:
             'background': background
         }
 
+    def calc_Mr(self, field_threshold = 2000):
+        
+
+        field, magnetization = self.data['H'], self.data['M_norm']
+        
+        zero_crossings = np.where(np.diff(np.signbit(field)))[0]
+
+        if len(zero_crossings) == 0:
+            raise ValueError("No zero crossings found in magnetization data.")
+        
+        if len(zero_crossings) == 0:
+            raise ValueError("No zero crossings found in magnetization data.")
+
+        x1 = np.where(magnetization[zero_crossings] < 0)
+        x2 = np.where(magnetization[zero_crossings] > 0)
+
+        Mr1_values = magnetization[zero_crossings[x1]]
+        Mr2_values = magnetization[zero_crossings[x2]]
+        Mr1_mean =float(np.mean(Mr1_values))
+        Mr2_mean =float(np.mean(Mr2_values))
+
+        Mr1_std = np.std(magnetization[zero_crossings[x1]])
+        Mr2_std = np.std(magnetization[zero_crossings[x2]])
+        
+        self.Mr_summary = {
+            'Mr1': Mr1_mean,
+            'Mr2': Mr2_mean,
+            'Mr1_std': Mr1_std,
+            'Mr2_std': Mr2_std,
+            'Mr_mean': (abs(Mr1_mean) + abs(Mr2_mean)) / 2,
+            'Mr_std': (Mr1_std + Mr2_std) / 2
+        }
+    
+    def calc_squareness(self, field_threshold = 2000):
+        positive_mask_H = self.data['H'] > field_threshold
+        negative_mask_H = self.data['H'] < -field_threshold
+        Mnorm_pos = self.data.loc[positive_mask_H, 'M_norm']
+        Mnorm_neg = self.data.loc[negative_mask_H, 'M_norm']
+
+        Ms_pos_mean = np.mean(Mnorm_pos)
+        Ms_neg_mean = np.mean(Mnorm_neg)
+        Ms_pos_std = np.std(Mnorm_pos)
+        Ms_neg_std = np.std(Mnorm_neg)
+
+        Ms_mean = (abs(Ms_pos_mean)+abs(Ms_neg_mean))/2
+
+        squareness = self.Mr_summary['Mr_mean']/Ms_mean
+        self.Mr_summary['MrMs'] = squareness
+        self.Ms_summary = {
+            'Ms1': Ms_pos_mean,
+            'Ms2': Ms_neg_mean,
+            'Ms1_std': Ms_pos_std,
+            'Ms2_std': Ms_neg_std,
+            'Ms_mean': (abs(Ms_pos_mean) + abs(Ms_neg_mean)) / 2,
+            'Ms_std': (Ms_pos_std + Ms_neg_std) / 2
+        }
+
+
     def normalize_data(self):
         """Normalizes the magnetization data."""
         mean_magnetization = np.mean(self.data['theta'])
@@ -79,6 +145,8 @@ class MOKEAnalyzer:
         field, magnetization = self.data['H'], self.data['M_norm']
         
         zero_crossings = np.where(np.diff(np.signbit(magnetization)))[0]
+        if len(zero_crossings) == 0:
+            raise ValueError("No zero crossings found in magnetization data.")
         
         if len(zero_crossings) == 0:
             raise ValueError("No zero crossings found in magnetization data.")
@@ -98,7 +166,7 @@ class MOKEAnalyzer:
             'Hc2': Hc2,
             'Hc1_std': Hc1_std,
             'Hc2_std': Hc2_std,
-            'Hc_mean': (Hc1 + Hc2) / 2,
+            'Hc_mean': (abs(Hc1) + abs(Hc2)) / 2,
             'Hc_std': (Hc1_std + Hc2_std) / 2
         }
 
@@ -108,10 +176,11 @@ class MOKEAnalyzer:
         
         # Calculate the derivative of magnetization to find switching fields
         mag_diff = np.diff(magnetization)
+        field_diff = np.diff(field)
 
         mag_cdf = norm.cdf(mag_diff)
-
-        sfd = np.abs(mag_diff)
+        sfd = np.divide(mag_diff, field_diff, out=np.zeros_like(mag_diff), where=field_diff!=0)
+        sfd = np.abs(sfd)
 
         sfd_normalized = np.abs(sfd / np.trapz(sfd, field[:-1]))
 
@@ -120,18 +189,18 @@ class MOKEAnalyzer:
         field_3, mag_cdf_3 = field[1000:1500],sfd_normalized[1000:1500]
         field_4, mag_cdf_4 = field[1500:-1],sfd_normalized[1500:]
 
-        fig, ax = plt.subplots(figsize=(10, 6))
+        #fig, ax = plt.subplots(figsize=(10, 6))
 
-        ax.plot(field_1,mag_cdf_1,'.',label='1')
-        ax.plot(field_2,mag_cdf_2,'.',label='2')
-        ax.plot(field_3,mag_cdf_3,'.',label='3')
-        ax.plot(field_4,mag_cdf_4,'.',label='4')
-        ax.axvline(self.Hc_summary['Hc1'])
-        ax.axvline(self.Hc_summary['Hc2'], color = 'r')
-        plt.legend()
+        #ax.plot(field_1,mag_cdf_1,'.',label='1')
+        #ax.plot(field_2,mag_cdf_2,'.',label='2')
+        #ax.plot(field_3,mag_cdf_3,'.',label='3')
+        #ax.plot(field_4,mag_cdf_4,'.',label='4')
+        #ax.axvline(self.Hc_summary['Hc1'])
+        #ax.axvline(self.Hc_summary['Hc2'], color = 'r')
+        #plt.legend()
 
-        ax.set_xlabel('Field (Oe)')
-        ax.set_ylabel('Switching field distribution')
+        #ax.set_xlabel('Field (Oe)')
+        #ax.set_ylabel('Switching field distribution')
         
         # Use histogram to estimate switching field distribution
         #hist, bin_edges = np.histogram(field[:-1][mag_diff > 0], bins=30)  # Only consider positive slopes
@@ -150,7 +219,7 @@ class MOKEAnalyzer:
         popt_pos, _ = curve_fit(gaussian, field_4, mag_cdf_4, p0=[max(mag_cdf_4), self.Hc_summary['Hc2'], 10, 0.])
         
         # Store Gaussian fit parameters
-        self.gaussian_fit_params = {'popt_neg':popt_neg, 'popt_pos':popt_pos}
+        self.sfd_fit_params = {'popt_neg':popt_neg, 'popt_pos':popt_pos}
 
     def gaussian(self,x, amp, mean, stddev, constant):
             return amp * np.exp(-((x - mean) ** 2) / (2 * stddev ** 2))+constant
@@ -158,12 +227,15 @@ class MOKEAnalyzer:
     def lognormal(self,x, amp, mean, stddev, constant):
         return(amp* (1/(x*stddev*((2*np.pi)**0.5)))*np.exp(-(np.log(x)-mean)**2/(2*stddev**2))+constant)
 
-    def plot_hysteresis_loop(self):
+    def plot_hysteresis_loop(self, data_type = 'raw', color = 'k'):
         """Plots the hysteresis loop of raw and processed data."""
         fig, ax = plt.subplots(figsize=(10, 6))
-        
-        ax.plot(self.data['H'], self.data['theta'], label='Raw Data', color='blue', alpha=0.5)
-        ax.plot(self.data['H'], self.data['M_norm'], label='Background Subtracted', color='orange')
+        if data_type == 'raw':
+            ax.plot(self.data['H'], self.data['theta'], label=self.name, color=color, alpha=0.5)
+        elif data_type == 'processed':
+            ax.plot(self.data['H'], self.data['M_norm'], label=self.name, color=color)
+        elif data_type == 'normalised':
+            ax.plot(self.data['H'], 2*self.data['M_norm']/(self.background_fit['popt_pos'][1]-self.background_fit['popt_neg'][1]), label=self.name, color=color)
         
         if 'M_ad_norm' in self.data.columns:
             ax.plot(self.data['H'], self.data['M_norm'], label='Normalized Data', color='green')
@@ -195,20 +267,11 @@ class MOKEAnalyzer:
         ax.set_xlabel('Field (Oe)')
         ax.set_ylabel('Switching field distribution')
         
-        # Use histogram to estimate switching field distribution
-        #hist, bin_edges = np.histogram(field[:-1][mag_diff > 0], bins=30)
-        
-        #bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-        
-        #ax.bar(bin_centers, hist, width=np.diff(bin_edges), align='center', alpha=0.5)
-        
         # Fit Gaussian and plot it if parameters are available
         if self.gaussian_fit_params is not None:
             x_fit = np.linspace(min(field), max(field), 1000)
-            y_fit_pos = self.gaussian(x_fit, self.gaussian_fit_params['popt_pos'][0], self.gaussian_fit_params['popt_pos'][1],self.gaussian_fit_params['popt_pos'][2],self.gaussian_fit_params['popt_pos'][3])
-            y_fit_neg = self.gaussian(x_fit, self.gaussian_fit_params['popt_neg'][0], self.gaussian_fit_params['popt_neg'][1],self.gaussian_fit_params['popt_neg'][2],self.gaussian_fit_params['popt_neg'][3])
-            #y_fit_pos = self.gaussian_fit_params['popt_pos'][0] * np.exp(-((x_fit - self.gaussian_fit_params['popt_pos'][1]) ** 2) / (2 * self.gaussian_fit_params['popt_pos'][2] ** 2))
-            #y_fit_neg = self.gaussian_fit_params['popt_neg'][0] * np.exp(-((x_fit - self.gaussian_fit_params['popt_neg'][1]) ** 2) / (2 * self.gaussian_fit_params['popt_neg'][2] ** 2))
+            y_fit_pos = self.gaussian(x_fit, self.sfd_fit_params['popt_pos'][0], self.sfd_fit_params['popt_pos'][1],self.sfd_fit_params['popt_pos'][2],self.sfd_fit_params['popt_pos'][3])
+            y_fit_neg = self.gaussian(x_fit, self.sfd_fit_params['popt_neg'][0], self.sfd_fit_params['popt_neg'][1],self.sfd_fit_params['popt_neg'][2],self.sfd_fit_params['popt_neg'][3])
             ax.plot(x_fit, y_fit_pos, color='red', label='Pos Gaussian Fit')
             ax.plot(x_fit, y_fit_neg, color='blue', label='Neg Gaussian Fit')
 
