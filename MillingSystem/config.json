@@ -1,0 +1,13 @@
+{
+    "METADATA_LINES": 4,
+    "HEADER_ROWS": [1, 2],
+    "FIGURE_SIZE": [12, 6],
+    "X_LIMIT": 220,
+    "IONS_TO_PLOT": [
+        {"x": "0_Time Relative [s]", "y": "Al-27 Ion Count [cps]"},
+        {"x": "2_Time Relative [s]", "y": "Si-28 Ion Count [cps]"},
+        {"x": "2_Time Relative [s]", "y": "Co-59 Ion Count [cps]"},
+        {"x": "3_Time Relative [s]", "y": "Ta-181 Ion Count [cps]"},
+        {"x": "4_Time Relative [s]", "y": "Pt-195 Ion Count [cps]"}
+    ]
+}
