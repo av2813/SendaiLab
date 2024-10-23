@@ -89,6 +89,3 @@ analyzer.analyze_folders(
 - Use `double_exp=True` for double exponential fitting and `use_2tm=True` for two-temperature model fitting
 
 This tool provides a flexible framework for TR-MOKE data analysis, allowing researchers to efficiently process and visualize their experimental results[1].
-
-Citations:
-[1] https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/181803/2a6e21a4-6a94-43ec-a3a4-08b679d8f532/paste.txt
