@@ -97,11 +97,11 @@ class TRMOKEAnalyzer:
         if double_exp:
             model = Model(self.moke_signal_double)
             params = Parameters()
-            params.add('A1', value=np.ptp(signal))
-            params.add('tau_r', value=0.1, min=0)
-            params.add('tau_d1', value=1, min=0)
-            params.add('A2', value=np.ptp(signal)/3)
-            params.add('tau_d2', value=10, min=0)
+            params.add('A1', value=np.ptp(signal), min=-10)
+            params.add('tau_r', value=0.03, min=0, max=1)
+            params.add('tau_d1', value=0.8, min=0,max=10)
+            params.add('A2', value=np.ptp(signal)/2)
+            params.add('tau_d2', value=60, min=0, max=100)
             params.add('y0', value=0, vary=False)
         else:
             model = Model(self.moke_signal)
@@ -114,14 +114,21 @@ class TRMOKEAnalyzer:
         result = model.fit(signal, params, t=t)
         return result
 
-    def process_file(self, filename: str, ax: Optional[plt.Axes] = None, color: str = 'b', double_exp: bool = False, use_2tm: bool = False) -> Dict:
+    def process_file(self, filename: str, ax: Optional[plt.Axes] = None, color: str = 'b',
+                      double_exp: bool = False, use_2tm: bool = False,label='Data',
+                      norm_f = 1) -> Dict:
         metadata, headers, data = self.read_data(filename)
         delay_time = data[:, 0]
-        kerr_rotation = data[:, 1]
+        kerr_rotation = data[:, 1]/norm_f
 
         fit_mask = delay_time > 0
         fit_delay_time = delay_time[fit_mask]
         fit_kerr_rotation = kerr_rotation[fit_mask]
+
+        back_mask = delay_time < -1
+        back_kerr_rotation = kerr_rotation[back_mask]
+        fit_kerr_rotation = fit_kerr_rotation - np.mean(back_kerr_rotation)
+        kerr_rotation = kerr_rotation - np.mean(back_kerr_rotation)
 
         if use_2tm:
             result = self.fit_two_temperature_model(fit_delay_time, fit_kerr_rotation)
@@ -129,10 +136,10 @@ class TRMOKEAnalyzer:
             result = self.fit_moke_signal(fit_delay_time, fit_kerr_rotation, double_exp)
 
         if ax:
-            ax.plot(fit_delay_time, fit_kerr_rotation, 'o', color=color, markersize=3, alpha=0.5,
-                    label=f"Data: {metadata['Pumppower(mW)']:.2f} mW, {metadata['Expectedfield(mT)']:.2f} mT")
+            ax.plot(delay_time, kerr_rotation, 'o', color=color, markersize=3, alpha=0.9,
+                    label=f"{label:s}: {metadata['Pumppower(mW)']:.2f} mW, {metadata['Expectedfield(mT)']:.2f} mT")
             ax.plot(fit_delay_time, result.best_fit, '-', color=color, linewidth=1)
-
+    
         fit_results = {
             'Pumppower(mW)': metadata['Pumppower(mW)'],
             'Expectedfield(mT)': metadata['Expectedfield(mT)'],
@@ -140,7 +147,9 @@ class TRMOKEAnalyzer:
         }
         return fit_results
 
-    def process_folder(self, folder_path: str, ax: Optional[plt.Axes] = None, color_map: str = 'viridis', double_exp: bool = False, use_2tm: bool = False) -> List[Dict]:
+    def process_folder(self, folder_path: str, ax: Optional[plt.Axes] = None, color_map: str = 'viridis',
+                        double_exp: bool = False, use_2tm: bool = False,
+                        label = 'Data', norm_f = 1) -> List[Dict]:
         data_files = [f for f in os.listdir(folder_path) if f.endswith('.txt')]
         data_files_sorted = natsorted(data_files)
         
@@ -149,13 +158,18 @@ class TRMOKEAnalyzer:
         fit_results = []
         for file, color in zip(data_files_sorted, colors):
             file_path = os.path.join(folder_path, file)
-            result = self.process_file(file_path, ax, color, double_exp, use_2tm)
+            result = self.process_file(file_path, ax, color, double_exp, use_2tm,label=label, norm_f =norm_f)
             fit_results.append(result)
         
         return fit_results
 
-    def plot_fit_summary(self, fit_results: List[Dict], labels: List[str],colors: List[str], double_exp: bool = False):
-        params = ['A', 'tau_r', 'tau_d', 'y0'] if not double_exp else ['A1', 'tau_r', 'tau_d1', 'A2', 'tau_d2', 'y0']
+    def plot_fit_summary(self, fit_results: List[Dict], labels: List[str],colors: List[str], double_exp: bool = False,use_2tm: bool = False):
+        if use_2tm:
+            params = ['Te0','T10','G','Ce','Cl','P','tau']
+        elif double_exp:
+            params = ['A1', 'tau_r', 'tau_d1', 'A2', 'tau_d2', 'y0']
+        else:
+            params = ['A', 'tau_r', 'tau_d', 'y0']
         fig, axs = plt.subplots(len(params)//2 + len(params)%2, 2, figsize=(15, 5*len(params)//2))
         axs = axs.flatten()
 
@@ -170,26 +184,42 @@ class TRMOKEAnalyzer:
             ax.set_ylabel(param)
             ax.set_title(f'{param} vs Pump Power')
             ax.legend()
+        
 
         plt.tight_layout()
         plt.show()
 
-    def analyze_folders(self, folder_paths: List[str], labels: List[str], color_maps: List[str], double_exp: bool = False, use_2tm: bool = False):
+    def analyze_folders(self, folder_paths: List[str], labels: List[str], 
+                        color_maps: List[str], normalisation_factors:List, 
+                        double_exp: bool = False, use_2tm: bool = False):
         fig, ax = plt.subplots(figsize=(12, 8))
         all_fit_results = []
-
-        for folder_path, label, color_map in zip(folder_paths, labels, color_maps):
-            fit_results = self.process_folder(folder_path, ax, double_exp=double_exp, use_2tm=use_2tm, color_map=color_map)
+        colors = []
+        for folder_path, label, color_map,norm_f in zip(folder_paths, labels, color_maps,normalisation_factors):
+            fit_results = self.process_folder(folder_path, ax, double_exp=double_exp, use_2tm=use_2tm, color_map=color_map,label=label, norm_f= norm_f)
             all_fit_results.append(fit_results)
+            colors.append(plt.get_cmap(color_map)(np.linspace(0.7, 71, 1)))
 
         ax.set_xlabel('Delay Time (ps)')
-        ax.set_ylabel('Kerr Rotation Signal (μV)')
+        ax.set_ylabel(r'$\Delta$ Magnetisation (norm.)')
         ax.set_title('TR-MOKE Data Comparison')
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        # Remove the legend from the main plot
+        ax.get_legend().remove()
         plt.tight_layout()
+        plt.show() 
+        # Create a new figure for the legend
+        figlegend,axlegend = plt.subplots(1,1)
+        axlegend.axis('off')  # Turn off the axis
+        # Get the legend handles and labels from the main plot
+        handles, labels2 = ax.get_legend_handles_labels()
+        # Create the legend in the new figure
+        figlegend.legend(handles, labels2, loc='center')
+        # Adjust the layout of the legend figure
+        figlegend.tight_layout()
         plt.show()
-
-        self.plot_fit_summary(all_fit_results, labels, double_exp=double_exp, use_2tm=use_2tm, colors=['r','purple','orange','blue'])
+         # Show the legend figure separately
+        self.plot_fit_summary(all_fit_results, labels, double_exp=double_exp, use_2tm=use_2tm, colors=colors)
 # Usage example:
 #if __name__ == "__main__":
 #    analyzer = TRMOKEAnalyzer()
