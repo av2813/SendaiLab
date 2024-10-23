@@ -1,6 +1,6 @@
 # TR-MOKE Data Analysis Tool
 
-This Python module provides a comprehensive tool for analyzing Time-Resolved Magneto-Optic Kerr Effect (TR-MOKE) data. It offers functionality for reading, processing, fitting, and visualizing TR-MOKE measurements.
+This Python module provides a comprehensive tool for analyzing Time-Resolved Magneto-Optic Kerr Effect (TR-MOKE) data. 
 
 ## Features
 
@@ -87,5 +87,3 @@ analyzer.analyze_folders(
 - Ensure your data files are in the correct format (comma-separated values with appropriate headers)
 - Adjust normalization factors based on your experimental setup
 - Use `double_exp=True` for double exponential fitting and `use_2tm=True` for two-temperature model fitting
-
-This tool provides a flexible framework for TR-MOKE data analysis, allowing researchers to efficiently process and visualize their experimental results[1].
