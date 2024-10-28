@@ -220,11 +220,3 @@ class TRMOKEAnalyzer:
         plt.show()
          # Show the legend figure separately
         self.plot_fit_summary(all_fit_results, labels, double_exp=double_exp, use_2tm=use_2tm, colors=colors)
-# Usage example:
-#if __name__ == "__main__":
-#    analyzer = TRMOKEAnalyzer()
-#    
-#    folder1 = r'path/to/folder1'
-#    folder2 = r'path/to/folder2'
-#    
-#    analyzer.analyze_folders([folder1, folder2], ['500mT', '6mT'], double_exp=True)
